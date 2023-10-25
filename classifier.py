@@ -1,5 +1,4 @@
 import os
-import argparse
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
@@ -7,19 +6,21 @@ from nltk.tokenize import sent_tokenize
 from nltk.tokenize import word_tokenize
 from collections import Counter
 from sklearn.impute import SimpleImputer
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
 
 ##########################
 #  Feature computation
 ##########################
 
 class FeatureComputer():
-    def __init__(self,documents):
+    def __init__(self, documents):
         self.docs = self.load_documents(documents)
         self.vocab = self.extract_vocabulary()
         self.idf = self.compute_idf(self.docs)
         self.vocab_index = self.get_vocab_index()
 
-    def simple_features(self,document):
+    def simple_features(self, document):
         """ Compute the simple features, i.e., number of sentences,
         the average number of words per sentence,
         and the average number of characters per word. """
@@ -29,16 +30,17 @@ class FeatureComputer():
         mean_chars = np.mean([len(word) for word in word_tokenize(document)])
         return num_sent, mean_words, mean_chars
 
-    def load_documents(self,documents):
+    def load_documents(self, documents):
         """ Index and load documents """
         results = {}
         index = 0
         for doc, label in documents:
-            results[index] = {'words':Counter(word_tokenize(doc)), 'label':label, 'doc':doc}
+            results[index] = {'words': Counter(word_tokenize(doc)), 'label': label, 'doc': doc}
             index += 1
         return results
 
     """ Compute a dictionary indexing the vocabulary """
+
     # def extract_vocabulary(self):
     #     vocab = {}
     #     for key,val in self.docs.items():
@@ -54,7 +56,6 @@ class FeatureComputer():
 
     def get_vocab_index(self):
         return {word: idx for idx, word in enumerate(self.vocab)}
-
 
     # def get_vocab_index(self): # TODO
     #     """ Build vocabulary index dict """
@@ -78,7 +79,6 @@ class FeatureComputer():
         for word, freq in self.vocab.items():
             results[word] = np.log(num_docs / (1 + freq))
         return results
-
 
     def get_features_train(self):
         """ Compute training features for training data """
@@ -115,13 +115,15 @@ class FeatureComputer():
             examples[doc] = {'feature': feature, 'label': document['label']}
         return examples
 
+
 ##########################
 # Simple helper functions
 ##########################
 
 
-def get_number_of_words(text : list):
+def get_number_of_words(text: list):
     return sum([1 for _ in text])
+
 
 def get_number_of_characters(text):
     iterator = 0
@@ -132,6 +134,7 @@ def get_number_of_characters(text):
                 character_counter = character_counter + 1
             iterator = iterator + 1
     return character_counter
+
 
 # def read_data(data):
 #     result = []
@@ -154,10 +157,13 @@ def read_data(data):
     return result
 
 
-def get_best_features(data): # TODO
+def get_best_features(data):  # TODO
     """ Computes the best feature """
-    features = np.array([0 for document,_ in data]).reshape(-1,1)
-    labels = [y for _,y in data]
+    # features = np.array([0 for document,_ in data]).reshape(-1,1)
+    # labels = [y for _,y in data]
+    features = np.array([len(document) for document, _ in data]).reshape(-1, 1)
+
+    labels = [y for _, y in data]
     return features, labels
 
 
@@ -167,11 +173,11 @@ def get_best_features(data): # TODO
 
 path = os.getcwd()
 
-print ("Loading data...")
+print("Loading data...")
 train = read_data('train.tsv')
 test = read_data('test.tsv')
 
-print ("Computing features...")
+print("Computing features...")
 
 feature_comp = FeatureComputer(train)
 data_train = feature_comp.get_features_train()
@@ -179,36 +185,51 @@ data_test = feature_comp.get_features_test(test)
 
 # Imputer for missing values in the test data
 imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
-imputer.fit([doc['feature'] for key,doc in data_train.items()])
+imputer.fit([doc['feature'] for key, doc in data_train.items()])
 
-train_X = [doc['feature'] for key,doc in sorted(data_train.items())]
+train_X = [doc['feature'] for key, doc in sorted(data_train.items())]
 train_y = [doc['label'] for key, doc in sorted(data_train.items())]
 
-test_X = imputer.transform([doc['feature'] for key,doc in sorted(data_test.items())])
+test_X = imputer.transform([doc['feature'] for key, doc in sorted(data_test.items())])
 test_y = [doc['label'] for key, doc in sorted(data_test.items())]
 
 logistic_model = LogisticRegression()
 mlp_model = MLPClassifier()
 
-print ("Training models...")
+# Train models
+print("Training models...")
+best_train_X, best_train_y = get_best_features(train)
+best_test_X, best_test_y = get_best_features(test)
 
-# TODO: train models
-
-
-# TODO: compute score of two models on the test data
-
-best_train_X, train_y = get_best_features(train)
-best_test_X, test_y = get_best_features(test)
-
-logistic_model = LogisticRegression()
-
-
-# best_model_logistic = LogisticRegression()
-mlp_model = MLPClassifier()
-
-logistic_model.fit(best_train_X, train_y)
-mlp_model.fit(best_train_X,train_y)
+logistic_model.fit(best_train_X, best_train_y)
+mlp_model.fit(train_X, train_y)
 
 # TODO: predictions
+logistic_predictions = logistic_model.predict(best_test_X)
+mlp_predictions = mlp_model.predict(test_X)
 
+# compute score of two models on the test data
+# Compute evaluation metrics
+logistic_accuracy = accuracy_score(best_test_y, logistic_predictions)
+mlp_accuracy = accuracy_score(test_y, mlp_predictions)
 
+logistic_precision = precision_score(best_test_y, logistic_predictions, average='weighted')
+mlp_precision = precision_score(test_y, mlp_predictions, average='weighted')
+
+logistic_recall = recall_score(best_test_y, logistic_predictions, average='weighted')
+mlp_recall = recall_score(test_y, mlp_predictions, average='weighted')
+
+logistic_f1 = f1_score(best_test_y, logistic_predictions, average='weighted')
+mlp_f1 = f1_score(test_y, mlp_predictions, average='weighted')
+
+print("Logistic Regression Accuracy: {:.2f}".format(logistic_accuracy))
+print("MLP Accuracy: {:.2f}".format(mlp_accuracy))
+
+print("Logistic Regression Precision: {:.2f}".format(logistic_precision))
+print("MLP Precision: {:.2f}".format(mlp_precision))
+
+print("Logistic Regression Recall: {:.2f}".format(logistic_recall))
+print("MLP Recall: {:.2f}".format(mlp_recall))
+
+print("Logistic Regression F1 Score: {:.2f}".format(logistic_f1))
+print("MLP F1 Score: {:.2f}".format(mlp_f1))
